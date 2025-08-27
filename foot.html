@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Match Results</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jQuery for simplified AJAX and DOM manipulation -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        /* Custom font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+            <div class="p-6 border-b border-gray-200 bg-gray-50">
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900">⚽ Football Match Finder</h1>
+                <p class="mt-1 text-gray-600">Displaying recent matches from the Premier League.</p>
+            </div>
+
+            <!-- This div will show the status of the API calls -->
+            <div id="status-log" class="p-6 space-y-3 text-sm">
+                <div class="flex items-center text-gray-500">
+                    <svg class="animate-spin h-5 w-5 mr-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Initializing...</span>
+                </div>
+            </div>
+
+            <!-- This div will display the final match results -->
+            <div class="p-6">
+                <h2 class="text-xl font-semibold mb-4 text-gray-800">Recent Match Results</h2>
+                <div id="match-results" class="space-y-4">
+                    <!-- Results will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+        <footer class="text-center mt-6 text-xs text-gray-500">
+            <p>Powered by AllSportsAPI</p>
+        </footer>
+    </div>
+
+    <script>
+        // Wait for the document to be fully loaded before running the script
+        $(document).ready(function() {
+
+            // --- Configuration ---
+            // IMPORTANT: Replace with your actual key if needed.
+            const API_KEY = "d73a572bc535a4d890f0e602583312c573e02621038fd3fd2296dfafeea9babf";
+            const BASE_URL = "https://apiv2.allsportsapi.com/football/";
+            const LEAGUE_NAME_TO_FIND = "Premier League"; // The league you are searching for
+
+            const $statusLog = $('#status-log');
+            const $matchResults = $('#match-results');
+
+            /**
+             * A helper function to add status messages to the log.
+             * @param {string} message - The message to display.
+             * @param {string} type - 'success', 'error', or 'info'.
+             */
+            function logStatus(message, type = 'info') {
+                let icon = 'ℹ️';
+                let colorClass = 'text-gray-600';
+                if (type === 'success') {
+                    icon = '✅';
+                    colorClass = 'text-green-600';
+                } else if (type === 'error') {
+                    icon = '❌';
+                    colorClass = 'text-red-600';
+                }
+                $statusLog.append(`<p class="font-medium ${colorClass}">${icon} ${message}</p>`);
+            }
+            
+            // Clear the initial "Initializing..." message
+            $statusLog.empty();
+            logStatus(`Searching for league ID for: '${LEAGUE_NAME_TO_FIND}'...`);
+
+            // --- Step 1: Find the League ID ---
+            $.ajax({
+                url: BASE_URL,
+                method: 'GET',
+                dataType: 'json',
+                data: {
+                    met: "Leagues",
+                    APIkey: API_KEY
+                }
+            }).done(function(data) {
+                let leagueId = null;
+                if (data && data.result) {
+                    // Loop through the leagues to find a match
+                    $.each(data.result, function(index, league) {
+                        if (league.league_name === LEAGUE_NAME_TO_FIND) {
+                            leagueId = league.league_key;
+                            return false; // Break the loop once found
+                        }
+                    });
+                }
+
+                if (leagueId) {
+                    logStatus(`Found League ID: ${leagueId}`, 'success');
+                    fetchMatches(leagueId);
+                } else {
+                    logStatus(`Could not find the league '${LEAGUE_NAME_TO_FIND}'. Please check the name.`, 'error');
+                }
+
+            }).fail(function(jqXHR, textStatus, errorThrown) {
+                logStatus(`API Error while fetching leagues: ${textStatus} - ${errorThrown}`, 'error');
+            });
+
+
+            // --- Step 2: Get Matches for that League from the Past 30 Days ---
+            function fetchMatches(leagueId) {
+                logStatus(`Fetching matches for league ID ${leagueId} from the last 30 days...`);
+
+                // Define the date range
+                const today = new Date();
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(today.getDate() - 30);
+
+                // Format dates to YYYY-MM-DD
+                const formatDate = (date) => date.toISOString().split('T')[0];
+                const dateFrom = formatDate(thirtyDaysAgo);
+                const dateTo = formatDate(today);
+
+                $.ajax({
+                    url: BASE_URL,
+                    method: 'GET',
+                    dataType: 'json',
+                    data: {
+                        met: "Fixtures",
+                        leagueId: leagueId,
+                        from: dateFrom,
+                        to: dateTo,
+                        APIkey: API_KEY
+                    }
+                }).done(function(matchesData) {
+                    if (matchesData && matchesData.result && matchesData.result.length > 0) {
+                        logStatus('Successfully retrieved match data.', 'success');
+                        $matchResults.empty(); // Clear previous results
+
+                        // Sort matches by date, most recent first
+                        matchesData.result.sort((a, b) => new Date(b.event_date) - new Date(a.event_date));
+
+                        // Display each match
+                        $.each(matchesData.result, function(index, match) {
+                            const matchElement = `
+                                <div class="grid grid-cols-3 items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                                    <!-- Home Team -->
+                                    <div class="flex items-center gap-3 justify-end">
+                                        <span class="font-semibold text-right">${match.event_home_team}</span>
+                                        <img src="${match.home_team_logo || 'https://placehold.co/40x40/e2e8f0/e2e8f0?text=?'}" alt="${match.event_home_team} logo" class="w-8 h-8 object-contain" onerror="this.src='https://placehold.co/40x40/e2e8f0/e2e8f0?text=?'">
+                                    </div>
+                                    <!-- Score and Date -->
+                                    <div class="text-center">
+                                        <p class="text-xl font-bold bg-gray-200 text-gray-800 rounded-md px-3 py-1 inline-block">${match.event_final_result}</p>
+                                        <p class="text-xs text-gray-500 mt-1">${match.event_date}</p>
+                                    </div>
+                                    <!-- Away Team -->
+                                    <div class="flex items-center gap-3">
+                                        <img src="${match.away_team_logo || 'https://placehold.co/40x40/e2e8f0/e2e8f0?text=?'}" alt="${match.event_away_team} logo" class="w-8 h-8 object-contain" onerror="this.src='https://placehold.co/40x40/e2e8f0/e2e8f0?text=?'">
+                                        <span class="font-semibold">${match.event_away_team}</span>
+                                    </div>
+                                </div>
+                            `;
+                            $matchResults.append(matchElement);
+                        });
+                    } else {
+                        logStatus('No matches found for this league in the specified date range.', 'info');
+                        $matchResults.html('<p class="text-center text-gray-500">No recent matches to display.</p>');
+                    }
+                }).fail(function(jqXHR, textStatus, errorThrown) {
+                    logStatus(`API Error while fetching matches: ${textStatus} - ${errorThrown}`, 'error');
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>
